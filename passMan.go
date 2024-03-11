@@ -9,26 +9,26 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
-type Context struct {
-	response http.ResponseWriter
-	request  *http.Request
-	ctx      context.Context
-}
-
 func defaultErrorHandler(err error, c *Context) error {
 	slog.Error("error", "err", err)
 	return nil
 }
 
 type (
-	ErrorHandler func(err error, c *Context)
+	ErrorHandler func(error, *Context) error
 	thisones     interface {
 		PassMan
 	}
 )
 
-func (c *Context) Renderer(component templ.Component) error {
-	return component.Render(c.response, c.request)
+type Context struct {
+	response http.ResponseWriter
+	request  *http.Request
+	ctx      context.Context
+}
+
+func (c *Context) Render(component templ.Component) error {
+	return component.Render(c.ctx, c.response)
 }
 
 type Handler func(c *Context) error
@@ -36,6 +36,21 @@ type Handler func(c *Context) error
 type PassMan struct {
 	ErrorHandler ErrorHandler
 	router       *httprouter.Router
+}
+
+func New() *PassMan {
+	return &PassMan{
+		router:       httprouter.New(),
+		ErrorHandler: defaultErrorHandler,
+	}
+}
+
+func (s *PassMan) Start(port string) error {
+	return http.ListenAndServe(port, s.router)
+}
+
+func (s *PassMan) Get(path string, h Handler, plugs ...Handler) {
+	s.router.GET(path, s.makeHTTPRouterHandle(h))
 }
 
 func (s *PassMan) makeHTTPRouterHandle(h Handler) httprouter.Handle {
